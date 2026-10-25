@@ -69,7 +69,6 @@ def classify_ticket(ticket_id: int) -> None:
             tool=CLASSIFY_TOOL,
             max_tokens=CLASSIFY_MAX_TOKENS,
             ticket=ticket,
-            temperature=0.0,
         )
         data = _validate_triage(result.data)
     except AIUnavailable as exc:
@@ -177,7 +176,7 @@ def get_or_create_draft(ticket: Ticket, *, force: bool = False) -> tuple[AIDraft
             )
             result = client.call_tool(
                 operation="draft", system=system, user=user, tool=DRAFT_TOOL,
-                max_tokens=DRAFT_MAX_TOKENS, ticket=ticket, temperature=0.4,
+                max_tokens=DRAFT_MAX_TOKENS, ticket=ticket,
             )
             reply = str(result.data.get("reply", "")).strip()
             if len(reply) < 40:

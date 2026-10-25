@@ -38,6 +38,7 @@ CATEGORY_KEYWORDS: dict[str, list[str]] = {
 CRITICAL_PATTERNS = [
     r"\blegal\b", r"\blawyer\b", r"\bcopyright\b", r"\bplagiari", r"\bfraud\b",
     r"\bhacked\b", r"(six|6|seven|7|eight|8|nine|9|ten|10|twelve|12)\s+months?\b.*\b(royalt|paid|payment)",
+    r"\b(royalt|paid|payment)\w*\b.*\b(six|6|seven|7|eight|8|nine|9|ten|10|twelve|12)\s+months?\b",
     r"\bno (royalty|payment).*\b(year|months)\b", r"\bsue\b", r"\bconsumer court\b",
 ]
 HIGH_PATTERNS = [

@@ -98,7 +98,6 @@ class LLMClient:
         tool: dict,
         max_tokens: int,
         ticket=None,
-        temperature: float = 0.2,
     ) -> ToolResult:
         if breaker_is_open():
             self._log(operation, ticket, success=False, error_type="circuit_open")
@@ -109,7 +108,6 @@ class LLMClient:
             response = self.client.messages.create(
                 model=self.model,
                 max_tokens=max_tokens,
-                temperature=temperature,
                 system=system,
                 messages=[{"role": "user", "content": user}],
                 tools=[tool],
