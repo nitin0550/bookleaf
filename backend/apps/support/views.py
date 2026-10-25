@@ -17,6 +17,7 @@ from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 
+from rest_framework.permissions import AllowAny
 from apps.accounts.permissions import IsAdmin, IsAuthor
 from apps.ai.llm import ai_enabled, breaker_is_open
 from apps.ai.models import AIUsageLog
@@ -319,6 +320,8 @@ class AdminStatsView(APIView):
 
 class MetaView(APIView):
     """Enumerations for building forms and filters on the client."""
+
+    permission_classes = [AllowAny]
 
     @extend_schema(summary="Ticket enumerations (statuses, categories, priorities)",
                    responses={200: OpenApiTypes.OBJECT})

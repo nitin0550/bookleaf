@@ -70,27 +70,38 @@ class Command(BaseCommand):
         admin_pw = os.getenv("SEED_ADMIN_PASSWORD", "admin123")
 
         for email, name in STAFF:
-            user, created = User.objects.get_or_create(
+            user, _ = User.objects.update_or_create(
                 email=email, defaults={"full_name": name, "role": User.Role.ADMIN, "is_staff": True}
             )
-            if created:
-                user.set_password(admin_pw)
-                user.save()
+            user.set_password(admin_pw)
+            user.save()
 
         n_books = 0
         for a in data["authors"]:
-            user, created = User.objects.update_or_create(
+            user, _ = User.objects.update_or_create(
                 email=a["email"].lower(),
                 defaults={"full_name": a["name"], "role": User.Role.AUTHOR},
             )
-            if created:
-                user.set_password(author_pw)
-                user.save()
-            author, _ = Author.objects.update_or_create(
-                author_id=a["author_id"],
-                defaults={"user": user, "phone": a.get("phone", ""), "city": a.get("city", ""),
-                          "joined_date": a.get("joined_date")},
-            )
+            user.set_password(author_pw)
+            user.save()
+            author = Author.objects.filter(author_id=a["author_id"]).first()
+            if not author:
+                author = Author.objects.filter(user=user).first()
+            if author:
+                author.author_id = a["author_id"]
+                author.user = user
+                author.phone = a.get("phone", "")
+                author.city = a.get("city", "")
+                author.joined_date = a.get("joined_date")
+                author.save()
+            else:
+                author = Author.objects.create(
+                    author_id=a["author_id"],
+                    user=user,
+                    phone=a.get("phone", ""),
+                    city=a.get("city", ""),
+                    joined_date=a.get("joined_date"),
+                )
             for b in a["books"]:
                 Book.objects.update_or_create(
                     book_id=b["book_id"],
