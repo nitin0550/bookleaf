@@ -126,7 +126,7 @@ def test_gemini_circuit_breaker(settings, priya, monkeypatch):
         exc = ServerError(500, "Server error")
         raise exc
 
-    monkeypatch.setattr("google.genai._gaos.google_genai.GeminiNextGenInteractions.create", boom)
+    monkeypatch.setattr("google.genai.models.Models.generate_content", boom)
     for _ in range(5):
         priya.post("/api/tickets/", ROYALTY, format="json")
     assert calls["n"] == 3  # breaker opened after 3 consecutive failures

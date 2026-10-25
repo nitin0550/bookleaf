@@ -71,6 +71,7 @@ def _record_failure():
 
 def _record_success():
     cache.delete(BREAKER_KEY)
+    cache.delete(BREAKER_OPEN_KEY)
 
 
 class LLMClient:
@@ -80,7 +81,7 @@ class LLMClient:
         cfg = settings.AI
         self.provider = str(cfg.get("PROVIDER", "gemini")).lower()
         self.api_key = cfg.get("API_KEY", "")
-        self.model = cfg.get("MODEL") or ("gemini-flash-latest" if self.provider == "gemini" else "claude-haiku-4-5")
+        self.model = cfg.get("MODEL") or ("gemini-3.5-flash-lite" if self.provider == "gemini" else "claude-haiku-4-5")
         self.timeout = cfg.get("TIMEOUT_SECONDS", 25)
         self.max_retries = cfg.get("MAX_RETRIES", 2)
 
@@ -149,21 +150,20 @@ class LLMClient:
         ticket,
         started: float,
     ) -> ToolResult:
+        from google.genai import types
         from google.genai.errors import APIError
 
         try:
-            interaction = self.client.interactions.create(
-                model=self.model,
-                input=user,
+            config = types.GenerateContentConfig(
                 system_instruction=system,
-                response_format=[
-                    {
-                        "type": "text",
-                        "mime_type": "application/json",
-                        "schema": tool["input_schema"],
-                    }
-                ],
-                timeout=self.timeout,
+                response_mime_type="application/json",
+                response_json_schema=tool["input_schema"],
+                max_output_tokens=max_tokens,
+            )
+            response = self.client.models.generate_content(
+                model=self.model,
+                contents=user,
+                config=config,
             )
         except APIError as exc:
             latency = int((time.monotonic() - started) * 1000)
@@ -181,7 +181,7 @@ class LLMClient:
             raise AIUnavailable(f"AI provider error ({error_type}).") from exc
 
         latency = int((time.monotonic() - started) * 1000)
-        text = (interaction.output_text or "").strip()
+        text = (response.text or "").strip()
         if not text:
             self._log(operation, ticket, success=False, error_type="empty_output", latency_ms=latency)
             _record_failure()
@@ -199,9 +199,9 @@ class LLMClient:
             _record_failure()
             raise AIUnavailable("AI returned an unexpected response shape.")
 
-        usage = getattr(interaction, "usage", None)
-        in_tok = getattr(usage, "total_input_tokens", 0) or 0
-        out_tok = getattr(usage, "total_output_tokens", 0) or 0
+        usage = getattr(response, "usage_metadata", None)
+        in_tok = getattr(usage, "prompt_token_count", 0) or 0
+        out_tok = getattr(usage, "candidates_token_count", 0) or 0
 
         self._log(operation, ticket, success=True, input_tokens=in_tok,
                   output_tokens=out_tok, latency_ms=latency)

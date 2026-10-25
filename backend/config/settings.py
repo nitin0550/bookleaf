@@ -192,7 +192,7 @@ AI = {
     "API_KEY": _GEMINI_KEY if _AI_PROVIDER == "gemini" else _ANTHROPIC_KEY,
     "MODEL": os.getenv(
         "AI_MODEL",
-        "gemini-flash-latest" if _AI_PROVIDER == "gemini" else "claude-haiku-4-5",
+        "gemini-3.5-flash-lite" if _AI_PROVIDER == "gemini" else "claude-haiku-4-5",
     ),
     "TIMEOUT_SECONDS": float(os.getenv("AI_TIMEOUT_SECONDS", "25")),
     "MAX_RETRIES": int(os.getenv("AI_MAX_RETRIES", "2")),
