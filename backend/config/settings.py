@@ -14,7 +14,7 @@ from dotenv import load_dotenv
 BASE_DIR = Path(__file__).resolve().parent.parent
 REPO_ROOT = BASE_DIR.parent
 
-load_dotenv(BASE_DIR / ".env")
+load_dotenv(BASE_DIR / ".env", override=True)
 
 
 def env_bool(name: str, default: bool = False) -> bool:
@@ -187,13 +187,18 @@ if not _AI_PROVIDER:
     else:
         _AI_PROVIDER = "gemini"  # default to Google AI Studio Free Plan
 
+_DEFAULT_MODEL = "gemini-3.5-flash-lite" if _AI_PROVIDER == "gemini" else "claude-haiku-4-5"
+_MODEL = os.getenv("AI_MODEL", _DEFAULT_MODEL)
+if _AI_PROVIDER == "gemini" and _MODEL in (
+    "gemini-flash-latest", "gemini-2.5-flash", "gemini-2.0-flash",
+    "gemini-1.5-flash", "gemini-2.5-flash-lite",
+):
+    _MODEL = "gemini-3.5-flash-lite"
+
 AI = {
     "PROVIDER": _AI_PROVIDER,
     "API_KEY": _GEMINI_KEY if _AI_PROVIDER == "gemini" else _ANTHROPIC_KEY,
-    "MODEL": os.getenv(
-        "AI_MODEL",
-        "gemini-3.5-flash-lite" if _AI_PROVIDER == "gemini" else "claude-haiku-4-5",
-    ),
+    "MODEL": _MODEL,
     "TIMEOUT_SECONDS": float(os.getenv("AI_TIMEOUT_SECONDS", "25")),
     "MAX_RETRIES": int(os.getenv("AI_MAX_RETRIES", "2")),
     # Run classification in a background thread so ticket creation never waits on the LLM.

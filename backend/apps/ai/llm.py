@@ -111,7 +111,13 @@ class LLMClient:
         cfg = settings.AI
         self.provider = str(cfg.get("PROVIDER", "gemini")).lower()
         self.api_key = cfg.get("API_KEY", "")
-        self.model = cfg.get("MODEL") or ("gemini-3.5-flash-lite" if self.provider == "gemini" else "claude-haiku-4-5")
+        model = cfg.get("MODEL") or ("gemini-3.5-flash-lite" if self.provider == "gemini" else "claude-haiku-4-5")
+        if self.provider == "gemini" and model in (
+            "gemini-flash-latest", "gemini-2.5-flash", "gemini-2.0-flash",
+            "gemini-1.5-flash", "gemini-2.5-flash-lite",
+        ):
+            model = "gemini-3.5-flash-lite"
+        self.model = model
         self.timeout = cfg.get("TIMEOUT_SECONDS", 25)
         self.max_retries = cfg.get("MAX_RETRIES", 2)
 
