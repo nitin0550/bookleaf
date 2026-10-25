@@ -149,7 +149,7 @@ REST_FRAMEWORK = {
     "DEFAULT_THROTTLE_RATES": {
         "user": "600/min",
         "anon": "30/min",
-        "ticket_create": "10/hour",
+        "ticket_create": "30/hour",
         "ai_draft": "60/hour",
     },
 }
