@@ -6,7 +6,7 @@ A two-sided support desk for BookLeaf Publishing. Authors check their books and 
 
 | | |
 |---|---|
-| Live demo | `<add your deployed URL>` |
+| Live demo | `https://bookleaf-awow.onrender.com` |
 | API docs (Swagger) | `<url>/api/docs/` · raw OpenAPI at `/api/schema/` |
 | Write-up | [WRITEUP.md](WRITEUP.md) |
 
