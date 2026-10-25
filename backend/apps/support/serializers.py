@@ -40,11 +40,8 @@ class StaffMessageSerializer(MessageSerializer):
 
 
 def _attachment_url(serializer, obj):
-    if not obj.attachment:
-        return None
-    request = serializer.context.get("request")
-    url = obj.attachment.url
-    return request.build_absolute_uri(url) if request else url
+    """Authenticated API path, not a public media URL."""
+    return f"/api/tickets/{obj.pk}/attachment/" if obj.attachment else None
 
 
 # ----------------------------------------------------------------------------- author

@@ -113,4 +113,9 @@ def test_attachment_validation(priya):
     resp = priya.post("/api/tickets/", {"book_id": "BK001", "subject": "Blurry print copies",
                                         "description": "Images are blurry in my author copies.",
                                         "attachment": ok}, format="multipart")
-    assert resp.status_code == 201 and resp.data["attachment_url"].endswith(".png")
+    assert resp.status_code == 201
+    url = resp.data["attachment_url"]
+    assert url == f"/api/tickets/{resp.data['id']}/attachment/"
+    assert priya.get(url).status_code == 200
+    from rest_framework.test import APIClient
+    assert APIClient().get(url).status_code == 401

@@ -1,5 +1,4 @@
 from django.conf import settings
-from django.conf.urls.static import static
 from django.contrib import admin
 from django.http import JsonResponse
 from django.urls import include, path, re_path
@@ -42,8 +41,8 @@ urlpatterns = [
     path("healthz", lambda r: JsonResponse({"ok": True})),
 ]
 
-if settings.DEBUG:
-    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+# Note: uploaded attachments are deliberately NOT exposed under /media; they are served
+# by the authenticated /api/tickets/{id}/attachment/ endpoint.
 
 # Single-page app: any other path returns the built React index.html.
 if (settings.FRONTEND_DIST / "index.html").exists():

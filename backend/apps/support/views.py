@@ -1,15 +1,17 @@
+import os
 from datetime import timedelta
 
 from django.conf import settings
 from django.db.models import Avg, BooleanField, Count, ExpressionWrapper, F, Prefetch, Q, Sum
 from django_filters.rest_framework import DjangoFilterBackend
+from django.http import FileResponse
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_view
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
-from rest_framework.exceptions import ValidationError
+from rest_framework.exceptions import NotFound, ValidationError
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle
@@ -194,6 +196,18 @@ class TicketViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mixins.Cre
         ticket = self.get_object()
         draft, cached = get_or_create_draft(ticket, force=request.method == "POST")
         return Response(AIDraftSerializer(draft, context={"cached": cached}).data)
+
+    @extend_schema(summary="Download the ticket's attachment (same access rules as the ticket)",
+                   responses={(200, "application/octet-stream"): OpenApiTypes.BINARY})
+    @action(detail=True, methods=["get"])
+    def attachment(self, request, pk=None):
+        # Attachments are private: served through the API (scoped + authenticated),
+        # never from a public /media URL.
+        ticket = self.get_object()
+        if not ticket.attachment:
+            raise NotFound("This ticket has no attachment.")
+        return FileResponse(ticket.attachment.open("rb"), as_attachment=False,
+                            filename=os.path.basename(ticket.attachment.name))
 
     @extend_schema(summary="Re-run AI classification (e.g. after an outage)", request=None,
                    responses={200: AdminTicketDetailSerializer})
