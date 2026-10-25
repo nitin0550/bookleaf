@@ -1,5 +1,5 @@
 """
-Thin, provider-specific LLM client.
+Provider-pluggable LLM client supporting Google AI Studio (Gemini) and Anthropic (Claude).
 
 Everything above this module (classifier, drafter) talks to ``LLMClient`` and
 only ever sees two outcomes: a ``ToolResult`` or an ``AIUnavailable``
@@ -15,6 +15,7 @@ Resilience built in here:
 """
 from __future__ import annotations
 
+import json
 import logging
 import time
 from dataclasses import dataclass
@@ -73,21 +74,32 @@ def _record_success():
 
 
 class LLMClient:
-    """Calls the model with a single forced tool so output is always structured JSON."""
+    """Calls the model with structured output matching schema."""
 
     def __init__(self):
         cfg = settings.AI
-        if not cfg.get("API_KEY"):
-            raise AIUnavailable("AI is not configured (ANTHROPIC_API_KEY missing).", retryable=False)
-        import anthropic  # imported lazily so the app runs without the SDK configured
+        self.provider = str(cfg.get("PROVIDER", "gemini")).lower()
+        self.api_key = cfg.get("API_KEY", "")
+        self.model = cfg.get("MODEL") or ("gemini-flash-latest" if self.provider == "gemini" else "claude-haiku-4-5")
+        self.timeout = cfg.get("TIMEOUT_SECONDS", 25)
+        self.max_retries = cfg.get("MAX_RETRIES", 2)
 
-        self._anthropic = anthropic
-        self.model = cfg["MODEL"]
-        self.client = anthropic.Anthropic(
-            api_key=cfg["API_KEY"],
-            timeout=cfg["TIMEOUT_SECONDS"],
-            max_retries=cfg["MAX_RETRIES"],
-        )
+        if not self.api_key:
+            key_name = "GEMINI_API_KEY" if self.provider == "gemini" else "ANTHROPIC_API_KEY"
+            raise AIUnavailable(f"AI is not configured ({key_name} missing).", retryable=False)
+
+        if self.provider == "gemini":
+            from google import genai
+            self._genai = genai
+            self.client = genai.Client(api_key=self.api_key)
+        else:
+            import anthropic
+            self._anthropic = anthropic
+            self.client = anthropic.Anthropic(
+                api_key=self.api_key,
+                timeout=self.timeout,
+                max_retries=self.max_retries,
+            )
 
     def call_tool(
         self,
@@ -104,6 +116,109 @@ class LLMClient:
             raise AIUnavailable("AI temporarily paused after repeated failures; using fallback.")
 
         started = time.monotonic()
+
+        if self.provider == "gemini":
+            return self._call_gemini(
+                operation=operation,
+                system=system,
+                user=user,
+                tool=tool,
+                max_tokens=max_tokens,
+                ticket=ticket,
+                started=started,
+            )
+        else:
+            return self._call_anthropic(
+                operation=operation,
+                system=system,
+                user=user,
+                tool=tool,
+                max_tokens=max_tokens,
+                ticket=ticket,
+                started=started,
+            )
+
+    def _call_gemini(
+        self,
+        *,
+        operation: str,
+        system: str,
+        user: str,
+        tool: dict,
+        max_tokens: int,
+        ticket,
+        started: float,
+    ) -> ToolResult:
+        from google.genai.errors import APIError
+
+        try:
+            interaction = self.client.interactions.create(
+                model=self.model,
+                input=user,
+                system_instruction=system,
+                response_format=[
+                    {
+                        "type": "text",
+                        "mime_type": "application/json",
+                        "schema": tool["input_schema"],
+                    }
+                ],
+                timeout=self.timeout,
+            )
+        except APIError as exc:
+            latency = int((time.monotonic() - started) * 1000)
+            error_type = type(exc).__name__
+            logger.warning("Gemini %s call failed: %s", operation, error_type)
+            self._log(operation, ticket, success=False, error_type=error_type, latency_ms=latency)
+            _record_failure()
+            raise AIUnavailable(f"AI provider error ({error_type}).") from exc
+        except Exception as exc:
+            latency = int((time.monotonic() - started) * 1000)
+            error_type = type(exc).__name__
+            logger.warning("Gemini %s call unexpected error: %s", operation, error_type)
+            self._log(operation, ticket, success=False, error_type=error_type, latency_ms=latency)
+            _record_failure()
+            raise AIUnavailable(f"AI provider error ({error_type}).") from exc
+
+        latency = int((time.monotonic() - started) * 1000)
+        text = (interaction.output_text or "").strip()
+        if not text:
+            self._log(operation, ticket, success=False, error_type="empty_output", latency_ms=latency)
+            _record_failure()
+            raise AIUnavailable("AI returned an empty response.")
+
+        try:
+            data = json.loads(text)
+        except json.JSONDecodeError as exc:
+            self._log(operation, ticket, success=False, error_type="invalid_json", latency_ms=latency)
+            _record_failure()
+            raise AIUnavailable("AI returned invalid JSON.") from exc
+
+        if not isinstance(data, dict):
+            self._log(operation, ticket, success=False, error_type="invalid_shape", latency_ms=latency)
+            _record_failure()
+            raise AIUnavailable("AI returned an unexpected response shape.")
+
+        usage = getattr(interaction, "usage", None)
+        in_tok = getattr(usage, "total_input_tokens", 0) or 0
+        out_tok = getattr(usage, "total_output_tokens", 0) or 0
+
+        self._log(operation, ticket, success=True, input_tokens=in_tok,
+                  output_tokens=out_tok, latency_ms=latency)
+        _record_success()
+        return ToolResult(data, self.model, in_tok, out_tok, latency)
+
+    def _call_anthropic(
+        self,
+        *,
+        operation: str,
+        system: str,
+        user: str,
+        tool: dict,
+        max_tokens: int,
+        ticket,
+        started: float,
+    ) -> ToolResult:
         try:
             response = self.client.messages.create(
                 model=self.model,
@@ -113,10 +228,17 @@ class LLMClient:
                 tools=[tool],
                 tool_choice={"type": "tool", "name": tool["name"]},
             )
-        except self._anthropic.APIError as exc:  # timeouts, 429, 5xx, auth, bad request…
+        except self._anthropic.APIError as exc:
             latency = int((time.monotonic() - started) * 1000)
             error_type = type(exc).__name__
-            logger.warning("LLM %s call failed: %s", operation, error_type)
+            logger.warning("Anthropic %s call failed: %s", operation, error_type)
+            self._log(operation, ticket, success=False, error_type=error_type, latency_ms=latency)
+            _record_failure()
+            raise AIUnavailable(f"AI provider error ({error_type}).") from exc
+        except Exception as exc:
+            latency = int((time.monotonic() - started) * 1000)
+            error_type = type(exc).__name__
+            logger.warning("Anthropic %s call unexpected error: %s", operation, error_type)
             self._log(operation, ticket, success=False, error_type=error_type, latency_ms=latency)
             _record_failure()
             raise AIUnavailable(f"AI provider error ({error_type}).") from exc

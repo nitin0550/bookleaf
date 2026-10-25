@@ -175,17 +175,33 @@ SPECTACULAR_SETTINGS = {
 }
 
 # --- AI / LLM configuration (keys only ever read server-side) ---
+_AI_PROVIDER = os.getenv("AI_PROVIDER")
+_GEMINI_KEY = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY", "")
+_ANTHROPIC_KEY = os.getenv("ANTHROPIC_API_KEY", "")
+
+if not _AI_PROVIDER:
+    if _GEMINI_KEY:
+        _AI_PROVIDER = "gemini"
+    elif _ANTHROPIC_KEY:
+        _AI_PROVIDER = "anthropic"
+    else:
+        _AI_PROVIDER = "gemini"  # default to Google AI Studio Free Plan
+
 AI = {
-    "PROVIDER": os.getenv("AI_PROVIDER", "anthropic"),
-    "API_KEY": os.getenv("ANTHROPIC_API_KEY", ""),
-    "MODEL": os.getenv("AI_MODEL", "claude-haiku-4-5"),
-    "TIMEOUT_SECONDS": float(os.getenv("AI_TIMEOUT_SECONDS", "20")),
+    "PROVIDER": _AI_PROVIDER,
+    "API_KEY": _GEMINI_KEY if _AI_PROVIDER == "gemini" else _ANTHROPIC_KEY,
+    "MODEL": os.getenv(
+        "AI_MODEL",
+        "gemini-flash-latest" if _AI_PROVIDER == "gemini" else "claude-haiku-4-5",
+    ),
+    "TIMEOUT_SECONDS": float(os.getenv("AI_TIMEOUT_SECONDS", "25")),
     "MAX_RETRIES": int(os.getenv("AI_MAX_RETRIES", "2")),
     # Run classification in a background thread so ticket creation never waits on the LLM.
     "ASYNC_CLASSIFICATION": env_bool("AI_ASYNC_CLASSIFICATION", True),
-    # Indicative USD prices per million tokens, used only for the cost dashboard.
-    "PRICE_INPUT_PER_MTOK": float(os.getenv("AI_PRICE_INPUT_PER_MTOK", "1.0")),
-    "PRICE_OUTPUT_PER_MTOK": float(os.getenv("AI_PRICE_OUTPUT_PER_MTOK", "5.0")),
+    # Indicative USD prices per million tokens, used for the cost dashboard.
+    # Google AI Studio Free Tier has $0 cost!
+    "PRICE_INPUT_PER_MTOK": float(os.getenv("AI_PRICE_INPUT_PER_MTOK", "0.0" if _AI_PROVIDER == "gemini" else "1.0")),
+    "PRICE_OUTPUT_PER_MTOK": float(os.getenv("AI_PRICE_OUTPUT_PER_MTOK", "0.0" if _AI_PROVIDER == "gemini" else "5.0")),
 }
 
 # Optional fixed "today" for royalty-cycle maths (e.g. BOOKLEAF_REFERENCE_DATE=2026-01-10)

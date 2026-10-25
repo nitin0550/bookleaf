@@ -2,7 +2,7 @@
 
 A two-sided support desk for BookLeaf Publishing. Authors check their books and royalties and raise tickets. BookLeaf staff work an urgency-sorted queue where AI triages each ticket and drafts a reply grounded in BookLeaf's policies and the author's real account data.
 
-**Stack:** Django 5 + Django REST Framework · React 18 (Vite) + TanStack Query · PostgreSQL (SQLite locally) · Anthropic Claude Haiku
+**Stack:** Django 5 + Django REST Framework · React 18 (Vite) + TanStack Query · PostgreSQL (SQLite locally) · Google AI Studio (Gemini) / Anthropic Claude
 
 | | |
 |---|---|
@@ -34,7 +34,7 @@ You need Python 3.11+ and Node 18+.
 cd backend
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-cp .env.example .env            # add ANTHROPIC_API_KEY to turn on AI (optional, see §4.4)
+cp .env.example .env            # add GEMINI_API_KEY from Google AI Studio (free, see §4.1)
 python manage.py migrate
 python manage.py seed_demo --demo-tickets
 python manage.py runserver      # http://127.0.0.1:8000
@@ -45,13 +45,13 @@ npm install
 npm run dev                     # http://localhost:5173 (proxies /api to :8000)
 ```
 
-Run the tests with `cd backend && pytest` (29 tests). The AI is faked in tests, so no key or network is needed.
+Run the tests with `cd backend && pytest` (30 tests). The AI is faked in tests, so no key or network is needed.
 
 **Single-service mode (how it deploys):** run `./build.sh`, then `cd backend && gunicorn config.wsgi`. Django serves the built React app and the API from one origin.
 
 ### Deploying
 
-`render.yaml` is a ready-made Render blueprint (web service + Postgres). On Railway or a VPS, the build command is `./build.sh` and the start command is in `Procfile`. Set these environment variables: `DJANGO_SECRET_KEY`, `DJANGO_ALLOWED_HOSTS`, `DJANGO_CSRF_TRUSTED_ORIGINS`, `DATABASE_URL` and `ANTHROPIC_API_KEY`. The seed command is idempotent and runs on every deploy.
+`render.yaml` is a ready-made Render blueprint (web service + Postgres). On Railway or a VPS, the build command is `./build.sh` and the start command is in `Procfile`. Set these environment variables: `DJANGO_SECRET_KEY`, `DJANGO_ALLOWED_HOSTS`, `DJANGO_CSRF_TRUSTED_ORIGINS`, `DATABASE_URL` and `GEMINI_API_KEY` (or `ANTHROPIC_API_KEY`). The seed command is idempotent and runs on every deploy.
 
 ---
 
@@ -95,12 +95,13 @@ frontend/ (React SPA)                     backend/ (Django)
 
 ## 4. AI integration
 
-### 4.1 Model choice: Claude Haiku (`claude-haiku-4-5`, configurable via `AI_MODEL`)
+### 4.1 Model choice: Google AI Studio Free Plan (`gemini-flash-latest`, configurable via `AI_MODEL`)
 
-- Both AI tasks are short, policy-bound text jobs: classify into fixed enums, and write about 150 words in a set tone. A small, fast model does them well. A frontier model would add cost and latency without a visible quality gain.
-- **Forced tool use** (`tool_choice: {type: "tool"}`) means the output always matches a JSON schema. Category and priority are enums, so there is no regex-parsing of free text. The result is still validated server-side; an invalid value is treated as a failure.
-- Latency matters because the draft appears while the agent is looking at the ticket.
-- Indicative cost (prices configurable via env): triage is about 900 input + 80 output tokens, and a draft is about 1,700 input + 300 output. That is **about $0.005 per ticket** for triage plus one draft. The admin stats panel shows the real 30-day token use and estimated cost from `AIUsageLog`.
+- **Why Google AI Studio Free Plan:** Google AI Studio provides a free tier (15 RPM, 1M TPM, 1,500 requests/day at **$0.00 cost**), enabling evaluation and testing without credit cards or billing setup.
+- Both AI tasks are short, policy-bound text jobs: classify into fixed enums, and write about 150 words in a set tone. A fast Flash model executes them with high speed and precision.
+- **Structured Outputs via JSON Schema:** Output adheres strictly to the defined schema (enums for category and priority). The result is validated server-side; an invalid value triggers graceful fallback.
+- **Provider pluggability:** Supports both Google AI Studio (default) and Anthropic Claude Haiku (`AI_PROVIDER=anthropic`).
+- Indicative cost: **$0.00 on Google AI Studio Free Tier** (or ~$0.005 on Claude Haiku). The admin stats panel displays real 30-day token use and cost from `AIUsageLog`.
 
 ### 4.2 Prompt strategy (`apps/ai/prompts.py`)
 
@@ -138,7 +139,7 @@ The LLM client (`apps/ai/llm.py`) turns *every* provider problem into a single `
 | Rate limits / transient errors | The SDK retries with exponential backoff (`AI_MAX_RETRIES`), with a request timeout (`AI_TIMEOUT_SECONDS`). |
 | No key configured | The app is fully usable on rules + templates, and the queue shows "AI: Off". |
 
-**API key security:** the key is read only from the `ANTHROPIC_API_KEY` env var in `settings.AI`. It is used only server-side in `llm.py`, never serialised, and never sent to the browser. `.env` is git-ignored, and `.env.example` has no secrets.
+**API key security:** the key is read only from `GEMINI_API_KEY` (or `ANTHROPIC_API_KEY`) env var in `settings.AI`. It is used only server-side in `llm.py`, never serialised, and never sent to the browser. `.env` is git-ignored, and `.env.example` has no secrets.
 
 ---
 

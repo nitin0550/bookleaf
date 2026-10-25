@@ -95,7 +95,7 @@ def test_circuit_breaker_stops_calls_after_repeated_failures(settings, priya, mo
     from apps.ai.llm import LLMClient
     from apps.ai.models import AIUsageLog
 
-    settings.AI = {**settings.AI, "API_KEY": "test-key", "MAX_RETRIES": 0}
+    settings.AI = {**settings.AI, "PROVIDER": "anthropic", "API_KEY": "test-key", "MAX_RETRIES": 0}
     calls = {"n": 0}
 
     def boom(self, **kwargs):
@@ -111,6 +111,28 @@ def test_circuit_breaker_stops_calls_after_repeated_failures(settings, priya, mo
     assert calls["n"] == 3  # breaker opened after 3 consecutive failures
     assert AIUsageLog.objects.filter(error_type="circuit_open").count() == 2
     assert Ticket.objects.filter(ai_status="failed").count() == 5
+
+
+def test_gemini_circuit_breaker(settings, priya, monkeypatch):
+    """Exercise real LLMClient on Gemini against failing SDK to check breaker + usage logs."""
+    from google.genai.errors import ServerError
+    from apps.ai.models import AIUsageLog
+
+    settings.AI = {**settings.AI, "PROVIDER": "gemini", "API_KEY": "test-key", "MAX_RETRIES": 0}
+    calls = {"n": 0}
+
+    def boom(self, **kwargs):
+        calls["n"] += 1
+        exc = ServerError(500, "Server error")
+        raise exc
+
+    monkeypatch.setattr("google.genai._gaos.google_genai.GeminiNextGenInteractions.create", boom)
+    for _ in range(5):
+        priya.post("/api/tickets/", ROYALTY, format="json")
+    assert calls["n"] == 3  # breaker opened after 3 consecutive failures
+    assert AIUsageLog.objects.filter(error_type="circuit_open").count() == 2
+    assert Ticket.objects.filter(ai_status="failed").count() == 5
+
 
 
 def test_rules_fallback_examples():
