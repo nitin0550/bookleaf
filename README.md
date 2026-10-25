@@ -5,9 +5,8 @@ A two-sided support desk for BookLeaf Publishing. Authors check their books and 
 **Stack:** Django 5 + Django REST Framework · React 18 (Vite) + TanStack Query · PostgreSQL (SQLite locally) · Google AI Studio (Gemini) / Anthropic Claude
 
 | | |
-|---|---|
-| Live demo | `https://bookleaf-awow.onrender.com` |
-| API docs (Swagger) | `<url>/api/docs/` · raw OpenAPI at `/api/schema/` |
+| Live demo | [https://bookleaf-awow.onrender.com](https://bookleaf-awow.onrender.com) |
+| API docs (Swagger) | [https://bookleaf-awow.onrender.com/api/docs/](https://bookleaf-awow.onrender.com/api/docs/) · [OpenAPI schema](https://bookleaf-awow.onrender.com/api/schema/) |
 | Write-up | [WRITEUP.md](WRITEUP.md) |
 
 ## Test logins
