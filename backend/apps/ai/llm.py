@@ -74,6 +74,36 @@ def _record_success():
     cache.delete(BREAKER_OPEN_KEY)
 
 
+def _parse_json_payload(text: str) -> dict:
+    cleaned = text.strip()
+    try:
+        data = json.loads(cleaned)
+        if isinstance(data, dict):
+            return data
+    except json.JSONDecodeError:
+        pass
+
+    if "```" in cleaned:
+        lines = cleaned.splitlines()
+        filtered = [line for line in lines if not line.strip().startswith("```")]
+        try:
+            data = json.loads("\n".join(filtered).strip())
+            if isinstance(data, dict):
+                return data
+        except json.JSONDecodeError:
+            pass
+
+    first_brace = cleaned.find("{")
+    last_brace = cleaned.rfind("}")
+    if first_brace != -1 and last_brace != -1 and last_brace > first_brace:
+        snippet = cleaned[first_brace : last_brace + 1]
+        data = json.loads(snippet)
+        if isinstance(data, dict):
+            return data
+
+    raise json.JSONDecodeError("No valid JSON object found", text, 0)
+
+
 class LLMClient:
     """Calls the model with structured output matching schema."""
 
@@ -188,16 +218,15 @@ class LLMClient:
             raise AIUnavailable("AI returned an empty response.")
 
         try:
-            data = json.loads(text)
+            data = _parse_json_payload(text)
         except json.JSONDecodeError as exc:
             self._log(operation, ticket, success=False, error_type="invalid_json", latency_ms=latency)
             _record_failure()
             raise AIUnavailable("AI returned invalid JSON.") from exc
-
-        if not isinstance(data, dict):
+        except Exception as exc:
             self._log(operation, ticket, success=False, error_type="invalid_shape", latency_ms=latency)
             _record_failure()
-            raise AIUnavailable("AI returned an unexpected response shape.")
+            raise AIUnavailable("AI returned an unexpected response shape.") from exc
 
         usage = getattr(response, "usage_metadata", None)
         in_tok = getattr(usage, "prompt_token_count", 0) or 0
